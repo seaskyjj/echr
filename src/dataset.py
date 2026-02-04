@@ -18,11 +18,10 @@ class ECHRDataset(Dataset):
         text = str(row['text'])
         label = int(row['label'])
         
-        encoding = self.tokenizer.encode_plus(
+        encoding = self.tokenizer(
             text,
             add_special_tokens=True,
             max_length=self.max_len,
-            return_token_type_ids=False,
             padding='max_length',
             truncation=True,
             return_attention_mask=True,
