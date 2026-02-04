@@ -50,7 +50,6 @@ def main(args):
         per_device_eval_batch_size=args.batch_size,
         warmup_steps=args.warmup_steps,
         weight_decay=0.01,
-        weight_decay=0.01,
         logging_steps=10,
         eval_strategy="epoch",
         save_strategy="epoch",
