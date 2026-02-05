@@ -87,16 +87,23 @@ def preprocess(data_dir):
         # No Violation if 'nonviolation' is not empty/null/FALSE
         # Ignore if ambiguous or neither (e.g. inadmissable without merit judgment)
         
-        is_violation = str(row['violation']).strip().lower()
-        is_nonviolation = str(row['nonviolation']).strip().lower()
+        # Determine label based on trusted download tag if available
+        download_label = str(row.get('download_label', '')).lower()
         
-        # Simple binary mapping suitable for "Violation vs No-Violation" task
-        # We focus on cases where there is a clear judgment
         label = -1
-        if is_violation not in ['nan', 'false', ''] and is_violation != '0':
+        if download_label == 'violation':
              label = 1
-        elif is_nonviolation not in ['nan', 'false', ''] and is_nonviolation != '0':
+        elif download_label == 'non-violation':
              label = 0
+        else:
+             # Fallback logic
+             is_violation = str(row['violation']).strip().lower()
+             is_nonviolation = str(row['nonviolation']).strip().lower()
+             
+             if is_violation not in ['nan', 'false', ''] and is_violation != '0':
+                  label = 1
+             elif is_nonviolation not in ['nan', 'false', ''] and is_nonviolation != '0':
+                  label = 0
         
         if label == -1:
             # print(f"Skipping {item_id}: No label (v='{row['violation']}', nv='{row['nonviolation']}')")
