@@ -5,6 +5,8 @@ import pandas as pd
 import re
 from sklearn.model_selection import train_test_split
 
+TARGET_ARTICLES = ['3', '5', '6', '8']
+
 def clean_text(text):
     if not text:
         return ""
@@ -13,40 +15,52 @@ def clean_text(text):
     return text
 
 def extract_facts(text):
-    # Simple heuristic to extract FACTS section
-    # Valid sections often start with "THE FACTS" or "AS TO THE FACTS"
-    # And end with "THE LAW" or "PROCEEDINGS BEFORE THE COMMISSION"
-    
-    normalization_map = {
-        "AS TO THE FACTS": "THE FACTS",
-        "THE FACTS": "THE FACTS"
-    }
-    
+    """Extract the FACTS section from an ECHR judgment (English only)."""
     text_upper = text.upper()
     
+    # Start markers, ordered by specificity
+    start_markers = [
+        "AS TO THE FACTS",
+        "THE FACTS",
+        "I.  THE CIRCUMSTANCES OF THE CASE",
+        "THE CIRCUMSTANCES OF THE CASE",
+    ]
+    
     start_idx = -1
-    for key in normalization_map:
-        idx = text_upper.find(key)
+    for marker in start_markers:
+        idx = text_upper.find(marker)
         if idx != -1:
-            start_idx = idx + len(key)
+            start_idx = idx + len(marker)
             break
             
     if start_idx == -1:
         return None
         
-    # Find end
-    end_markers = ["THE LAW", "PROCEEDINGS BEFORE THE COMMISSION", "RELEVANT DOMESTIC LAW"]
-    end_idx = -1
+    # End markers
+    end_markers = [
+        "THE LAW",
+        "RELEVANT DOMESTIC LAW",
+        "RELEVANT LEGAL FRAMEWORK",
+        "PROCEEDINGS BEFORE THE COMMISSION",
+    ]
     
-    current_search_start = start_idx
     best_end_idx = len(text)
-    
     for marker in end_markers:
-        idx = text_upper.find(marker, current_search_start)
+        idx = text_upper.find(marker, start_idx)
         if idx != -1 and idx < best_end_idx:
             best_end_idx = idx
             
     return text[start_idx:best_end_idx].strip()
+
+TARGET_COUNTRIES = ['RUS', 'TUR', 'GBR']
+
+def normalize_respondent(respondent, target_countries=TARGET_COUNTRIES):
+    """Normalize multi-country respondents like 'MDA;RUS' to the target country 'RUS'."""
+    if ';' in str(respondent):
+        for country in target_countries:
+            if country in str(respondent):
+                return country
+    return str(respondent)
 
 def preprocess(data_dir):
     metadata_path = os.path.join(data_dir, "metadata.csv")
@@ -111,10 +125,27 @@ def preprocess(data_dir):
              
         if label != -1:
             label_count += 1
+            
+            # Extract which target articles are involved
+            v_arts = str(row.get('violation', '')).strip()
+            nv_arts = str(row.get('nonviolation', '')).strip()
+            
+            def extract_target_articles(field_val):
+                if not field_val or field_val.lower() in ['nan', 'false', '0']:
+                    return []
+                found = []
+                for art in TARGET_ARTICLES:
+                    if re.search(rf'(?:^|;){art}(?:$|;|-)', field_val):
+                        found.append(art)
+                return found
+            
             processed_data.append({
                 'text': clean_text(facts),
                 'label': label,
-                'item_id': item_id
+                'item_id': item_id,
+                'respondent': normalize_respondent(row.get('respondent', 'UNKNOWN')),
+                'violation_articles': ';'.join(extract_target_articles(v_arts)),
+                'nonviolation_articles': ';'.join(extract_target_articles(nv_arts)),
             })
             
     df_proc = pd.DataFrame(processed_data)
@@ -124,17 +155,37 @@ def preprocess(data_dir):
         print("No valid cases found. Check text extraction or labeling logic.")
         return
 
-    # Split
-    train, temp = train_test_split(df_proc, test_size=0.3, random_state=42, stratify=df_proc['label'])
-    val, test = train_test_split(temp, test_size=0.5, random_state=42, stratify=temp['label'])
-    
+    # Merge year from metadata
+    df_proc = pd.merge(df_proc, df_meta[['itemid', 'judgementdate']].rename(columns={'itemid': 'item_id'}),
+                       on='item_id', how='left')
+    df_proc['year'] = pd.to_datetime(df_proc['judgementdate'], dayfirst=True, errors='coerce').dt.year
+    df_proc.drop(columns=['judgementdate'], inplace=True)
+
+    # Summary
+    print(f"\n--- Per-country breakdown ---")
+    for country in sorted(df_proc['respondent'].unique()):
+        for label_val in [0, 1]:
+            subset = df_proc[(df_proc['respondent'] == country) & (df_proc['label'] == label_val)]
+            if len(subset) == 0:
+                continue
+            label_name = 'V' if label_val == 1 else 'NV'
+            art_col = 'violation_articles' if label_val == 1 else 'nonviolation_articles'
+            art_counts = {}
+            for arts in subset[art_col].dropna():
+                for a in str(arts).split(';'):
+                    if a and a in TARGET_ARTICLES:
+                        art_counts[f'Art{a}'] = art_counts.get(f'Art{a}', 0) + 1
+            print(f"  {country} {label_name}: {len(subset):>4} | Years {subset['year'].min()}-{subset['year'].max()} | {art_counts}")
+
     output_dir = os.path.join(os.path.dirname(data_dir), "processed")
     os.makedirs(output_dir, exist_ok=True)
-    train.to_csv(os.path.join(output_dir, "train.csv"), index=False)
-    val.to_csv(os.path.join(output_dir, "val.csv"), index=False)
-    test.to_csv(os.path.join(output_dir, "test.csv"), index=False)
-    
-    print(f"Saved processed datasets to {output_dir}")
+    out_path = os.path.join(output_dir, "processed.csv")
+    df_proc.to_csv(out_path, index=False)
+    print(f"\nSaved {len(df_proc)} cases to {out_path}")
 
 if __name__ == "__main__":
-    preprocess("data/raw")
+    import argparse
+    parser = argparse.ArgumentParser(description="Preprocess ECHR data (extract FACTS, label, no splitting)")
+    parser.add_argument("--data_dir", type=str, default="data/raw", help="Path to raw data directory")
+    args = parser.parse_args()
+    preprocess(args.data_dir)
