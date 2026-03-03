@@ -505,9 +505,10 @@ plt.show()"""
 Scattertext is a great tool to interactively explore term associations between two categories."""
     cells.append(nbf.v4.new_markdown_cell(scatter_md))
 
-    scatter_code = """import os
-# Create a smaller corpus for scattertext to run quickly
-sample_df = df.sample(n=min(1000, len(df)), random_state=42)
+    scatter_code = """from IPython.display import IFrame, display
+
+# Small sample to keep HTML manageable
+sample_df = df.sample(n=min(300, len(df)), random_state=42)
 
 corpus = st.CorpusFromPandas(sample_df,
                              category_col='label_name',
@@ -519,13 +520,17 @@ html = st.produce_scattertext_explorer(corpus,
                                        category='Violation',
                                        category_name='Violation',
                                        not_category_name='Non-Violation',
+                                       minimum_term_frequency=5,
                                        width_in_pixels=1000,
                                        metadata=sample_df['respondent'])
 
+# Fix unresolved D3 URL placeholder left by scattertext
+html = html.replace('<!--D3FCURL-->', 'https://cdnjs.cloudflare.com/ajax/libs/d3/5.16.0/d3.min.js')
+
 with open('scattertext_viz.html', 'w', encoding='utf-8') as f:
     f.write(html)
-    
-print("Scattertext visualization saved to 'scattertext_viz.html'. Open this file in your browser to interact with it.")"""
+
+display(IFrame('scattertext_viz.html', width=1050, height=700))"""
     cells.append(nbf.v4.new_code_cell(scatter_code))
 
     # Concordance
