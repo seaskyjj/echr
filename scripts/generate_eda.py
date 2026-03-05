@@ -654,8 +654,9 @@ To verify whether the same words distinguish Violation from Non-Violation across
     cells.append(nbf.v4.new_markdown_cell(shifter_country_md))
 
     shifter_country_code = """countries = sorted(df['respondent'].unique())
+fig, axes = plt.subplots(1, len(countries), figsize=(6 * len(countries), 8))
 
-for country in countries:
+for idx, country in enumerate(countries):
     c_df = df[df['respondent'] == country]
     c_viol = c_df[c_df['label'] == 1]['text'].dropna()
     c_nviol = c_df[c_df['label'] == 0]['text'].dropna()
@@ -664,15 +665,32 @@ for country in countries:
     c_count_nv = get_counts(c_nviol)
     
     try:
-        prop_shift = sh.ProportionShift(type2freq_1=c_count_nv, type2freq_2=c_count_v)
-        prop_shift.get_shift_graph(
-            system_names=[f'{country} Non-Violation', f'{country} Violation'],
-            title=f'Proportion Shift: {country}',
-            cumulative_inset=False, text_size_inset=False
-        )
-        plt.show()
+        ps = sh.ProportionShift(type2freq_1=c_count_nv, type2freq_2=c_count_v)
+        scores = ps.type2shift_score
+        sorted_scores = sorted(scores.items(), key=lambda x: abs(x[1]), reverse=True)[:20]
+        # Sort by score value for display
+        sorted_scores = sorted(sorted_scores, key=lambda x: x[1])
+        words = [w for w, s in sorted_scores]
+        vals = [s for w, s in sorted_scores]
+        colors = ['salmon' if v > 0 else 'skyblue' for v in vals]
+        
+        axes[idx].barh(words, vals, color=colors)
+        axes[idx].axvline(x=0, color='black', linewidth=0.5)
+        axes[idx].set_title(f'{country}', fontsize=14, fontweight='bold')
+        axes[idx].set_xlabel('Proportion Shift Score')
+        if idx == 0:
+            axes[idx].set_ylabel('Word')
     except Exception as e:
-        print(f"{country}: Proportion Shift failed — {e}")"""
+        axes[idx].text(0.5, 0.5, f'{country}:{e}', ha='center', va='center', transform=axes[idx].transAxes)
+        axes[idx].set_title(f'{country}', fontsize=14, fontweight='bold')
+
+# Add legend
+from matplotlib.patches import Patch
+legend_elements = [Patch(facecolor='salmon', label='→ Violation'), Patch(facecolor='skyblue', label='→ Non-Violation')]
+fig.legend(handles=legend_elements, loc='upper center', ncol=2, fontsize=12, bbox_to_anchor=(0.5, 1.02))
+plt.suptitle('Per-Country Proportion Shift: Top 20 Discriminative Words', fontsize=16, y=1.05)
+plt.tight_layout()
+plt.show()"""
     cells.append(nbf.v4.new_code_cell(shifter_country_code))
 
     shifter_interp_code = """# Quantify top discriminative words across countries
@@ -837,11 +855,57 @@ for country in sorted(df['respondent'].unique()):
 
 print(f"\\n5. DATASET SIZE: {len(df)} total cases across {df['respondent'].nunique()} countries, years {df['year'].min():.0f}-{df['year'].max():.0f}.")
 
+# 6. TF-IDF cross-country findings
+print(f"\\n6. TF-IDF CROSS-COUNTRY OVERLAP:")
+country_top = {}
+for country in sorted(df['respondent'].unique()):
+    c_df = df[df['respondent'] == country]
+    c_v = c_df[c_df['label']==1]['text'].dropna()
+    c_nv = c_df[c_df['label']==0]['text'].dropna()
+    country_top[country] = {
+        'v': set(w for w, _ in get_top_n_tfidf(c_v, n=15)),
+        'nv': set(w for w, _ in get_top_n_tfidf(c_nv, n=15))
+    }
+all_countries = sorted(country_top.keys())
+shared_v = set.intersection(*[country_top[c]['v'] for c in all_countries])
+shared_nv = set.intersection(*[country_top[c]['nv'] for c in all_countries])
+print(f"   Shared Violation terms (all countries): {shared_v if shared_v else '{none}'}")
+print(f"   Shared Non-Violation terms (all countries): {shared_nv if shared_nv else '{none}'}")
+from itertools import combinations
+for a, b in combinations(all_countries, 2):
+    ov = len(country_top[a]['v'] & country_top[b]['v'])
+    onv = len(country_top[a]['nv'] & country_top[b]['nv'])
+    print(f"   {a} ∩ {b}: {ov}/15 Violation, {onv}/15 Non-Violation shared")
+
+# 7. Fighting words cross-country findings
+print(f"\\n7. FIGHTING WORDS CROSS-COUNTRY OVERLAP:")
+country_fw = {}
+for country in sorted(df['respondent'].unique()):
+    c_df = df[df['respondent'] == country]
+    c_v = c_df[c_df['label']==1]['text'].dropna()
+    c_nv = c_df[c_df['label']==0]['text'].dropna()
+    c_cv = get_counts(c_v)
+    c_cnv = get_counts(c_nv)
+    try:
+        ps = sh.ProportionShift(type2freq_1=c_cnv, type2freq_2=c_cv)
+        srt = sorted(ps.type2shift_score.items(), key=lambda x: abs(x[1]), reverse=True)
+        country_fw[country] = set(w for w, _ in srt[:20])
+        pos = [w for w, s in srt[:10] if s > 0]
+        neg = [w for w, s in srt[:10] if s < 0]
+        print(f"   {country} top Violation: {', '.join(pos[:5])} | top Non-Violation: {', '.join(neg[:5])}")
+    except: pass
+if len(country_fw) > 1:
+    shared_fw = set.intersection(*country_fw.values())
+    print(f"   Shared top-20 discriminative words (all countries): {shared_fw if shared_fw else '{none}'}")
+
 print("\\n" + "="*60)
 print("CONCLUSION")
 print("="*60)
 print("The EDA confirms that non-legal features (keyword artifacts, text length,")
 print("respondent state) show systematic patterns correlated with case outcomes.")
+print("The per-country TF-IDF and Fighting Words analyses reveal the degree to")
+print("which discriminative vocabulary is shared vs. country-specific, informing")
+print("whether models might learn jurisdiction-dependent shortcuts.")
 print("This validates our research hypothesis that spurious correlations exist")
 print("in the ECHR dataset and must be accounted for in the modeling phase.")"""
     cells.append(nbf.v4.new_code_cell(conclusion_code))
