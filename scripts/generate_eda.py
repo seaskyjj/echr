@@ -599,7 +599,8 @@ Scattertext plots each term on a 2D plane where:
 Unlike TF-IDF (which ranks words by importance within a single class), Scattertext shows the **relative position** of every term across both classes simultaneously, making it easier to spot class-discriminating vocabulary at a glance."""
     cells.append(nbf.v4.new_markdown_cell(scatter_md))
 
-    scatter_code = """from IPython.display import IFrame, display
+    scatter_code = """from IPython.display import Image, IFrame, display
+import subprocess, os
 
 # Small sample to keep HTML manageable
 sample_df = df.sample(n=min(300, len(df)), random_state=42)
@@ -621,10 +622,30 @@ html = st.produce_scattertext_explorer(corpus,
 # Fix unresolved D3 URL placeholder left by scattertext
 html = html.replace('<!--D3FCURL-->', 'https://cdnjs.cloudflare.com/ajax/libs/d3/5.16.0/d3.min.js')
 
-with open('scattertext_viz.html', 'w', encoding='utf-8') as f:
+# Save as standalone interactive HTML
+html_path = os.path.abspath('scattertext_viz.html')
+with open(html_path, 'w', encoding='utf-8') as f:
     f.write(html)
 
-display(IFrame('scattertext_viz.html', width=1050, height=700))"""
+# Capture screenshot as PNG (renders on GitHub where IFrame is stripped)
+img_path = os.path.abspath('scattertext_viz.png')
+try:
+    subprocess.run([
+        'google-chrome', '--headless', '--disable-gpu', '--no-sandbox',
+        f'--screenshot={img_path}', '--window-size=1100,800',
+        '--hide-scrollbars',
+        f'file://{html_path}'
+    ], capture_output=True, timeout=300)
+    
+    if os.path.exists(img_path):
+        display(Image(filename=img_path))
+        print("(For interactive version, open scattertext_viz.html in a browser)")
+    else:
+        raise FileNotFoundError("Screenshot not created")
+except Exception as e:
+    print(f"Screenshot capture skipped: {e}")
+    # Fallback: display interactive IFrame in Jupyter
+    display(IFrame('scattertext_viz.html', width=1050, height=700))"""
     cells.append(nbf.v4.new_code_cell(scatter_code))
 
     # Concordance
