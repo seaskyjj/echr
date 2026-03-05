@@ -1,4 +1,4 @@
-data/
+data/raw/full_text.json
 logs/
 results/
 .ipynb_checkpoints/
