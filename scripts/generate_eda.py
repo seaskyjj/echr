@@ -598,6 +598,39 @@ else:
     print("  generalization risk from shared spurious vocabulary.")"""
     cells.append(nbf.v4.new_code_cell(tfidf_interp_code))
 
+    tfidf_article_md = """#### Per-Article TF-IDF Breakdown
+Do different ECHR articles produce different top TF-IDF terms? We repeat the analysis **per article type** (Art 3/5/6/8)."""
+    cells.append(nbf.v4.new_markdown_cell(tfidf_article_md))
+
+    tfidf_article_code = """article_map = {'3': 'Art 3 (Torture)', '5': 'Art 5 (Liberty)',
+                '6': 'Art 6 (Fair Trial)', '8': 'Art 8 (Privacy)'}
+
+fig, axes = plt.subplots(len(article_map), 2, figsize=(16, 5 * len(article_map)))
+
+for i, (art_num, art_name) in enumerate(article_map.items()):
+    mask = (
+        df['violation_articles'].str.contains(art_num, na=False) |
+        df['nonviolation_articles'].str.contains(art_num, na=False)
+    )
+    a_df = df[mask]
+    a_viol = a_df[a_df['label'] == 1]['text'].dropna()
+    a_nviol = a_df[a_df['label'] == 0]['text'].dropna()
+    
+    if len(a_viol) >= 5:
+        top_v = get_top_n_tfidf(a_viol, n=10)
+        sns.barplot(x=[v for _, v in top_v], y=[w for w, _ in top_v], ax=axes[i, 0], color='salmon')
+    axes[i, 0].set_title(f'{art_name} \u2014 Violation (n={len(a_viol)})', fontsize=12, fontweight='bold')
+    
+    if len(a_nviol) >= 5:
+        top_nv = get_top_n_tfidf(a_nviol, n=10)
+        sns.barplot(x=[v for _, v in top_nv], y=[w for w, _ in top_nv], ax=axes[i, 1], color='skyblue')
+    axes[i, 1].set_title(f'{art_name} \u2014 Non-Violation (n={len(a_nviol)})', fontsize=12, fontweight='bold')
+
+plt.suptitle('Per-Article Top TF-IDF N-grams', fontsize=16, y=1.01)
+plt.tight_layout()
+plt.show()"""
+    cells.append(nbf.v4.new_code_cell(tfidf_article_code))
+
     # Word Counts (N-grams)
     ngrams_md = """## 6.1 Simple Word Counts (N-grams)
 Before using TF-IDF, let's look at simple, raw counts of unigrams and bigrams using `CountVectorizer`."""
@@ -737,6 +770,86 @@ if len(country_shift_words) > 1:
         print("\\n→ Each country has a distinct discriminative vocabulary, suggesting models may learn")
         print("  country-specific patterns rather than universal legal reasoning.")"""
     cells.append(nbf.v4.new_code_cell(shifter_interp_code))
+
+    shifter_article_md = """#### Per-Article Fighting Words
+Do different ECHR articles (Art 3/5/6/8) produce different discriminative vocabularies? We compute a **Proportion Shift** for each article separately, comparing Violation vs Non-Violation texts within that article category."""
+    cells.append(nbf.v4.new_markdown_cell(shifter_article_md))
+
+    shifter_article_code = """article_map = {'3': 'Art 3 (Torture)', '5': 'Art 5 (Liberty)',
+                '6': 'Art 6 (Fair Trial)', '8': 'Art 8 (Privacy)'}
+
+fig, axes = plt.subplots(1, len(article_map), figsize=(6 * len(article_map), 8))
+
+article_shift_words = {}
+for idx, (art_num, art_name) in enumerate(article_map.items()):
+    # Cases involving this article (from either violation or nonviolation columns)
+    mask = (
+        df['violation_articles'].str.contains(art_num, na=False) |
+        df['nonviolation_articles'].str.contains(art_num, na=False)
+    )
+    a_df = df[mask]
+    a_viol = a_df[a_df['label'] == 1]['text'].dropna()
+    a_nviol = a_df[a_df['label'] == 0]['text'].dropna()
+    
+    if len(a_viol) < 5 or len(a_nviol) < 5:
+        axes[idx].text(0.5, 0.5, f'{art_name}:\\nInsufficient data', ha='center', va='center', transform=axes[idx].transAxes)
+        axes[idx].set_title(art_name, fontsize=12, fontweight='bold')
+        continue
+    
+    a_count_v = get_counts(a_viol)
+    a_count_nv = get_counts(a_nviol)
+    
+    try:
+        ps = sh.ProportionShift(type2freq_1=a_count_nv, type2freq_2=a_count_v)
+        scores = ps.type2shift_score
+        sorted_scores = sorted(scores.items(), key=lambda x: abs(x[1]), reverse=True)[:20]
+        sorted_scores = sorted(sorted_scores, key=lambda x: x[1])
+        words = [w for w, s in sorted_scores]
+        vals = [s for w, s in sorted_scores]
+        colors = ['salmon' if v > 0 else 'skyblue' for v in vals]
+        
+        axes[idx].barh(words, vals, color=colors)
+        axes[idx].axvline(x=0, color='black', linewidth=0.5)
+        axes[idx].set_title(f'{art_name}\\n(n={len(a_df)})', fontsize=12, fontweight='bold')
+        axes[idx].set_xlabel('Proportion Shift Score')
+        if idx == 0:
+            axes[idx].set_ylabel('Word')
+        
+        # Store for cross-article analysis
+        top20 = [w for w, _ in sorted(scores.items(), key=lambda x: abs(x[1]), reverse=True)[:20]]
+        article_shift_words[art_name] = set(top20)
+    except Exception as e:
+        axes[idx].text(0.5, 0.5, f'{art_name}:{e}', ha='center', va='center', transform=axes[idx].transAxes)
+        axes[idx].set_title(art_name, fontsize=12, fontweight='bold')
+
+from matplotlib.patches import Patch
+legend_elements = [Patch(facecolor='salmon', label='\u2192 Violation'), Patch(facecolor='skyblue', label='\u2192 Non-Violation')]
+fig.legend(handles=legend_elements, loc='upper center', ncol=2, fontsize=12, bbox_to_anchor=(0.5, 1.02))
+plt.suptitle('Per-Article Proportion Shift: Top 20 Discriminative Words', fontsize=16, y=1.05)
+plt.tight_layout()
+plt.show()
+
+# Cross-article analysis
+print("=" * 60)
+print("FIGHTING WORDS CROSS-ARTICLE ANALYSIS")
+print("=" * 60)
+if len(article_shift_words) > 1:
+    for art, words in article_shift_words.items():
+        print(f"\\n{art}: {len(words)} top discriminative words")
+    arts = sorted(article_shift_words.keys())
+    shared_all = set.intersection(*article_shift_words.values())
+    print(f"\\nShared across ALL articles: {shared_all if shared_all else '{none}'}")
+    from itertools import combinations
+    for a, b in combinations(arts, 2):
+        overlap = len(article_shift_words[a] & article_shift_words[b])
+        print(f"  {a} \u2229 {b}: {overlap}/20 shared")
+    if shared_all:
+        print("\\n\u2192 Words shared across ALL article types are likely generic legal language,")
+        print("  not article-specific reasoning. Consider removing them in ablation tests.")
+    else:
+        print("\\n\u2192 Each article type has distinct discriminative vocabulary, suggesting models")
+        print("  would benefit from article-aware feature engineering.")"""
+    cells.append(nbf.v4.new_code_cell(shifter_article_code))
 
     # Scattertext
     scatter_md = """## 6.3 Scattertext Visualization
@@ -898,14 +1011,39 @@ if len(country_fw) > 1:
     shared_fw = set.intersection(*country_fw.values())
     print(f"   Shared top-20 discriminative words (all countries): {shared_fw if shared_fw else '{none}'}")
 
+# 8. Fighting words cross-article findings
+print(f"\\n8. FIGHTING WORDS CROSS-ARTICLE OVERLAP:")
+article_map_c = {'3': 'Art 3', '5': 'Art 5', '6': 'Art 6', '8': 'Art 8'}
+article_fw = {}
+for art_num, art_name in article_map_c.items():
+    mask = (
+        df['violation_articles'].str.contains(art_num, na=False) |
+        df['nonviolation_articles'].str.contains(art_num, na=False)
+    )
+    a_df = df[mask]
+    a_v = a_df[a_df['label']==1]['text'].dropna()
+    a_nv = a_df[a_df['label']==0]['text'].dropna()
+    if len(a_v) >= 5 and len(a_nv) >= 5:
+        try:
+            ps = sh.ProportionShift(type2freq_1=get_counts(a_nv), type2freq_2=get_counts(a_v))
+            srt = sorted(ps.type2shift_score.items(), key=lambda x: abs(x[1]), reverse=True)
+            article_fw[art_name] = set(w for w, _ in srt[:20])
+            pos = [w for w, s in srt[:10] if s > 0]
+            neg = [w for w, s in srt[:10] if s < 0]
+            print(f"   {art_name} top Violation: {', '.join(pos[:5])} | top Non-Violation: {', '.join(neg[:5])}")
+        except: pass
+if len(article_fw) > 1:
+    shared_art = set.intersection(*article_fw.values())
+    print(f"   Shared top-20 discriminative words (all articles): {shared_art if shared_art else '{none}'}")
+
 print("\\n" + "="*60)
 print("CONCLUSION")
 print("="*60)
 print("The EDA confirms that non-legal features (keyword artifacts, text length,")
 print("respondent state) show systematic patterns correlated with case outcomes.")
-print("The per-country TF-IDF and Fighting Words analyses reveal the degree to")
-print("which discriminative vocabulary is shared vs. country-specific, informing")
-print("whether models might learn jurisdiction-dependent shortcuts.")
+print("The per-country and per-article analyses reveal distinct discriminative")
+print("vocabularies across jurisdictions and legal domains, informing whether")
+print("models might learn jurisdiction- or article-dependent shortcuts.")
 print("This validates our research hypothesis that spurious correlations exist")
 print("in the ECHR dataset and must be accounted for in the modeling phase.")"""
     cells.append(nbf.v4.new_code_cell(conclusion_code))
