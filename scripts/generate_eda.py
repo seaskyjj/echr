@@ -712,10 +712,18 @@ print("in the ECHR dataset and must be accounted for in the modeling phase.")"""
     cells.append(nbf.v4.new_code_cell(conclusion_code))
 
     next_steps_md = """**Next Steps for Modeling:**
-1. Train a baseline SVM with TF-IDF and compare against Legal-BERT.
+1. Train a baseline **SVM with TF-IDF** (as demonstrated in Lab 6) and compare against **Legal-BERT**.
 2. Perform **ablation testing**: remove spurious tokens ("represented", country names) and re-evaluate accuracy.
-3. Use LIME or Integrated Gradients for explainability to verify the model reasons about legal concepts, not artifacts.
-4. Evaluate on a **realistic, unbalanced test set** that reflects actual ECHR outcome ratios."""
+3. Use **LIME or Integrated Gradients** for explainability to verify the model reasons about legal concepts, not artifacts.
+4. Evaluate on a **realistic, unbalanced test set** that reflects actual ECHR outcome ratios.
+
+**Analytical Methods Referenced from In-Class Labs (`labs/*.md`):**
+- **Word frequency & n-gram analysis** (Lab 3): Counting term frequencies over time to identify evolving legal language — applied here to detect spurious keyword patterns like "represented."
+- **Zipf's law & distributional analysis** (Lab 4): Understanding the heavy-tailed distribution of legal vocabulary informs our choice of `min_df`/`max_df` thresholds in TF-IDF.
+- **Text pre-processing pipeline** (Lab 4): Tokenization, stopwords removal, stemming/lemmatization — applied here via NLTK and scikit-learn for cleaner NLP features.
+- **TF-IDF & CountVectorizer featurization** (Lab 6): Document-term matrix representations form our baseline featurization strategy (the DRME pipeline: Data → Representation → Model → Evaluation).
+- **SVM & Logistic Regression classification** (Lab 6): Linear classifiers applied to text — our planned baseline for ECHR violation prediction.
+- **Concordance & collocation analysis** (Lab 3): Understanding word-in-context patterns — applied here via NLTK concordance to verify how "represented" is used differently across classes."""
     cells.append(nbf.v4.new_markdown_cell(next_steps_md))
 
     nb['cells'] = cells
