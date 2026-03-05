@@ -534,6 +534,70 @@ plt.tight_layout()
 plt.show()"""
     cells.append(nbf.v4.new_code_cell(tfidf_code))
 
+    tfidf_country_md = """#### Per-Country TF-IDF Breakdown
+To check whether the same keywords dominate across all three countries, we repeat the TF-IDF analysis **per country**."""
+    cells.append(nbf.v4.new_markdown_cell(tfidf_country_md))
+
+    tfidf_country_code = """countries = sorted(df['respondent'].unique())
+fig, axes = plt.subplots(len(countries), 2, figsize=(16, 5 * len(countries)))
+
+for i, country in enumerate(countries):
+    c_df = df[df['respondent'] == country]
+    c_viol = c_df[c_df['label'] == 1]['text'].dropna()
+    c_nviol = c_df[c_df['label'] == 0]['text'].dropna()
+    
+    top_v = get_top_n_tfidf(c_viol, n=10)
+    top_nv = get_top_n_tfidf(c_nviol, n=10)
+    
+    sns.barplot(x=[v for _, v in top_v], y=[w for w, _ in top_v], ax=axes[i, 0], color='salmon')
+    axes[i, 0].set_title(f'{country} — Violation', fontsize=12, fontweight='bold')
+    
+    sns.barplot(x=[v for _, v in top_nv], y=[w for w, _ in top_nv], ax=axes[i, 1], color='skyblue')
+    axes[i, 1].set_title(f'{country} — Non-Violation', fontsize=12, fontweight='bold')
+
+plt.suptitle('Per-Country Top TF-IDF N-grams', fontsize=16, y=1.01)
+plt.tight_layout()
+plt.show()"""
+    cells.append(nbf.v4.new_code_cell(tfidf_country_code))
+
+    tfidf_interp_code = """# Quantify overlap in top TF-IDF terms across countries
+print("=" * 60)
+print("TF-IDF CROSS-COUNTRY ANALYSIS")
+print("=" * 60)
+
+country_top_terms = {}
+for country in sorted(df['respondent'].unique()):
+    c_df = df[df['respondent'] == country]
+    c_viol = c_df[c_df['label'] == 1]['text'].dropna()
+    c_nviol = c_df[c_df['label'] == 0]['text'].dropna()
+    country_top_terms[country] = {
+        'violation': set(w for w, _ in get_top_n_tfidf(c_viol, n=15)),
+        'non_violation': set(w for w, _ in get_top_n_tfidf(c_nviol, n=15))
+    }
+
+countries = sorted(country_top_terms.keys())
+
+# Find shared terms across all countries
+shared_v = set.intersection(*[country_top_terms[c]['violation'] for c in countries])
+shared_nv = set.intersection(*[country_top_terms[c]['non_violation'] for c in countries])
+
+print(f"\\nViolation — terms shared by ALL {len(countries)} countries (top 15 each): {shared_v if shared_v else '{none}'}") 
+print(f"Non-Violation — terms shared by ALL {len(countries)} countries (top 15 each): {shared_nv if shared_nv else '{none}'}")
+
+# Pairwise overlap
+from itertools import combinations
+for a, b in combinations(countries, 2):
+    ov = len(country_top_terms[a]['violation'] & country_top_terms[b]['violation'])
+    onv = len(country_top_terms[a]['non_violation'] & country_top_terms[b]['non_violation'])
+    print(f"  {a} ∩ {b}: {ov}/15 Violation terms shared, {onv}/15 Non-Violation terms shared")
+
+if shared_v or shared_nv:
+    print("\\n→ Shared terms are candidate SPURIOUS features: models may latch onto these non-legal cues.")
+else:
+    print("\\n→ Low overlap suggests TF-IDF discriminative terms are country-specific, reducing cross-country") 
+    print("  generalization risk from shared spurious vocabulary.")"""
+    cells.append(nbf.v4.new_code_cell(tfidf_interp_code))
+
     # Word Counts (N-grams)
     ngrams_md = """## 6.1 Simple Word Counts (N-grams)
 Before using TF-IDF, let's look at simple, raw counts of unigrams and bigrams using `CountVectorizer`."""
@@ -584,6 +648,77 @@ prop_shift.get_shift_graph(system_names=['Non-Violation', 'Violation'],
                            cumulative_inset=False, text_size_inset=False)
 plt.show()"""
     cells.append(nbf.v4.new_code_cell(shifter_code))
+
+    shifter_country_md = """#### Per-Country Fighting Words
+To verify whether the same words distinguish Violation from Non-Violation across all three countries, we produce a **Proportion Shift** chart for each country separately."""
+    cells.append(nbf.v4.new_markdown_cell(shifter_country_md))
+
+    shifter_country_code = """countries = sorted(df['respondent'].unique())
+
+for country in countries:
+    c_df = df[df['respondent'] == country]
+    c_viol = c_df[c_df['label'] == 1]['text'].dropna()
+    c_nviol = c_df[c_df['label'] == 0]['text'].dropna()
+    
+    c_count_v = get_counts(c_viol)
+    c_count_nv = get_counts(c_nviol)
+    
+    try:
+        prop_shift = sh.ProportionShift(type2freq_1=c_count_nv, type2freq_2=c_count_v)
+        prop_shift.get_shift_graph(
+            system_names=[f'{country} Non-Violation', f'{country} Violation'],
+            title=f'Proportion Shift: {country}',
+            cumulative_inset=False, text_size_inset=False
+        )
+        plt.show()
+    except Exception as e:
+        print(f"{country}: Proportion Shift failed — {e}")"""
+    cells.append(nbf.v4.new_code_cell(shifter_country_code))
+
+    shifter_interp_code = """# Quantify top discriminative words across countries
+print("=" * 60)
+print("FIGHTING WORDS CROSS-COUNTRY ANALYSIS")
+print("=" * 60)
+
+country_shift_words = {}
+for country in sorted(df['respondent'].unique()):
+    c_df = df[df['respondent'] == country]
+    c_viol = c_df[c_df['label'] == 1]['text'].dropna()
+    c_nviol = c_df[c_df['label'] == 0]['text'].dropna()
+    c_count_v = get_counts(c_viol)
+    c_count_nv = get_counts(c_nviol)
+    try:
+        ps = sh.ProportionShift(type2freq_1=c_count_nv, type2freq_2=c_count_v)
+        scores = ps.type2shift_score
+        # Top words favoring violation (positive) and non-violation (negative)
+        sorted_scores = sorted(scores.items(), key=lambda x: abs(x[1]), reverse=True)
+        top_words = [w for w, s in sorted_scores[:20]]
+        country_shift_words[country] = set(top_words)
+        pos_words = [w for w, s in sorted_scores[:10] if s > 0]
+        neg_words = [w for w, s in sorted_scores[:10] if s < 0]
+        print(f"\\n{country}:")
+        print(f"  Top Violation words: {', '.join(pos_words[:5])}")
+        print(f"  Top Non-Violation words: {', '.join(neg_words[:5])}")
+    except Exception as e:
+        print(f"{country}: Analysis failed — {e}")
+
+if len(country_shift_words) > 1:
+    countries = sorted(country_shift_words.keys())
+    shared = set.intersection(*country_shift_words.values())
+    print(f"\\nTop-20 discriminative words shared by ALL countries: {shared if shared else '{none}'}")
+    
+    from itertools import combinations
+    for a, b in combinations(countries, 2):
+        overlap = len(country_shift_words[a] & country_shift_words[b])
+        print(f"  {a} ∩ {b}: {overlap}/20 top discriminative words shared")
+    
+    if shared:
+        print("\\n→ Shared discriminative words across countries are strong candidates for spurious shortcuts.")
+        print("  These should be prioritized in ablation testing during modeling.")
+    else:
+        print("\\n→ Each country has a distinct discriminative vocabulary, suggesting models may learn")
+        print("  country-specific patterns rather than universal legal reasoning.")"""
+    cells.append(nbf.v4.new_code_cell(shifter_interp_code))
 
     # Scattertext
     scatter_md = """## 6.3 Scattertext Visualization
