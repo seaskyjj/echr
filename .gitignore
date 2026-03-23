@@ -9,3 +9,5 @@ __pycache__/
 memory.md
 echrdata.zip
 models/*
+.vscode/*
+echr_data.zip
