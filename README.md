@@ -44,7 +44,7 @@ We will frame this as a **binary classification task** (Violation vs. No Violati
 Ensure you have the necessary dependencies installed, including `torch`, `transformers`, `echr-extractor`, `pandas`, and `scikit-learn`.
 
 ```bash
-pip install echr-extractor
+uv add echr-extractor
 ```
 
 #### **2. Data Acquisition**
@@ -55,21 +55,194 @@ python scripts/download_data.py --count 100
 ```
 This will save metadata to `data/raw/metadata.csv` and full text to `data/raw/full_text.json`.
 
+To download the next country expansion wave and merge it with the current raw dataset:
+```bash
+python scripts/download_increments_data.py \
+  --existing_raw_dir data/raw \
+  --output_dir data/incremental/raw
+```
+
+Default increment countries are:
+- `FRA`
+- `ROU`
+- `POL`
+- `DEU`
+- `BEL`
+
+This writes:
+- `data/incremental/raw/metadata_increment.csv`
+- `data/incremental/raw/full_text_increment.json`
+- `data/incremental/raw/metadata_merged.csv`
+- `data/incremental/raw/full_text_merged.json`
+
+If you want to replace the base raw dataset with the merged version:
+```bash
+python scripts/download_increments_data.py \
+  --existing_raw_dir data/raw \
+  --output_dir data/incremental/raw \
+  --write_merged_to_base
+```
+
 #### **3. Data Preprocessing**
-Parse the downloaded raw data, extract the "FACTS" section, label the cases, and split into train/val/test sets.
+Parse the downloaded raw data and extract the "FACTS" section.
 ```bash
 python scripts/preprocess_data.py
 ```
-processed files will be saved in `data/processed/`.
+The processed dataset will be saved to `data/processed/processed.csv`.
 
-#### **4. Model Training**
-Train the Legal-BERT classifier on the processed data.
+The preprocessing step now preserves co-respondent information instead of collapsing it to a single country. It keeps:
+- `respondent`
+- `is_multi_respondent`
+- `respondent_list`
+- `source_batch`
+- `source_type`
+
+#### **4. Reproducible Data Split**
+Create fixed-seed train/val/test splits and a metadata-enriched test file.
+```bash
+python scripts/split_data.py --seed 42
+```
+This writes:
+- `data/processed/train.csv`
+- `data/processed/val.csv`
+- `data/processed/test.csv`
+- `data/processed/metadata_joined_test.csv`
+
+Split behavior is now slightly more robust for expanded country coverage:
+- outer split stratifies by `respondent + label` where support is sufficient
+- rare respondent-label combinations are collapsed for the outer split
+- val/test split uses label-only stratification for stability
+
+#### **5. Classical Baselines**
+Train Multinomial Naive Bayes and Linear SVM baselines with word/char n-grams.
+```bash
+python src/train_classical.py --split_dir data/processed --output_dir results/classical --seed 42
+```
+
+#### **6. Model Training**
+Train the Legal-BERT classifier on the processed splits.
 ```bash
 # Run training (example with small batch size for verification)
-python src/train.py --epochs 3 --batch_size 8 --output_dir results
+python src/train.py \
+  --split_dir data/processed \
+  --epochs 3 \
+  --batch_size 8 \
+  --learning_rate 2e-5 \
+  --weight_decay 0.01 \
+  --output_dir results/legal_bert
 ```
 To run on CPU (if no GPU available or OOM issues):
 ```bash
 export CUDA_VISIBLE_DEVICES=""
-python src/train.py --epochs 1 --batch_size 2
+python src/train.py --split_dir data/processed --epochs 1 --batch_size 2
 ```
+
+Train a long-context Longformer baseline on the same split.
+```bash
+python src/train.py \
+  --split_dir data/processed \
+  --model_name allenai/longformer-base-4096 \
+  --max_len 4096 \
+  --epochs 2 \
+  --batch_size 1 \
+  --grad_accum_steps 4 \
+  --learning_rate 1e-5 \
+  --weight_decay 0.01 \
+  --use_weighted_loss \
+  --gradient_checkpointing \
+  --eval_accumulation_steps 8 \
+  --output_dir results/longformer_4096
+```
+
+Optional imbalance and decision-boundary controls:
+```bash
+# 1) Weighted loss only
+python src/train.py \
+  --split_dir data/processed \
+  --epochs 3 \
+  --batch_size 4 \
+  --use_weighted_loss
+
+# 2) Weighted sampler only
+python src/train.py \
+  --split_dir data/processed \
+  --epochs 3 \
+  --batch_size 4 \
+  --use_weighted_sampler
+
+# 3) Threshold tuning only
+python src/train.py \
+  --split_dir data/processed \
+  --epochs 3 \
+  --batch_size 4 \
+  --use_threshold_tuning \
+  --threshold_metric balanced_accuracy \
+  --threshold_grid_size 181
+
+# 4) Combine all three
+python src/train.py \
+  --split_dir data/processed \
+  --epochs 3 \
+  --batch_size 4 \
+  --use_weighted_loss \
+  --use_weighted_sampler \
+  --use_threshold_tuning
+```
+
+When threshold tuning is enabled, the script writes:
+- `test_predictions_default.csv` / `test_metrics_default.json` for the raw argmax output
+- `test_predictions_threshold_tuned.csv` / `test_metrics_threshold_tuned.json` for the validation-tuned threshold
+- `test_predictions.csv` / `test_metrics.json` as the active output for the current run
+
+Supported threshold-tuning objectives:
+- `balanced_accuracy` (default and recommended for avoiding all-positive collapse)
+- `macro_f1`
+- `f1`
+
+#### **7. Kaggle-Friendly Paths**
+All core scripts now support a dataset root and a writable working root. This is the intended pattern on Kaggle:
+```bash
+python scripts/preprocess_data.py \
+  --dataset_dir /kaggle/input/datasets/seaskyjj/echr_data \
+  --working_dir /kaggle/working
+
+python scripts/split_data.py \
+  --dataset_dir /kaggle/input/datasets/seaskyjj/echr_data \
+  --working_dir /kaggle/working \
+  --seed 42
+
+python src/train_classical.py \
+  --dataset_dir /kaggle/input/datasets/seaskyjj/echr_data \
+  --working_dir /kaggle/working \
+  --seed 42
+
+python src/train.py \
+  --dataset_dir /kaggle/input/datasets/seaskyjj/echr_data \
+  --working_dir /kaggle/working \
+  --epochs 3 --batch_size 4 --seed 42
+
+python src/train.py \
+  --dataset_dir /kaggle/input/datasets/seaskyjj/echr_data \
+  --working_dir /kaggle/working \
+  --model_name allenai/longformer-base-4096 \
+  --max_len 4096 \
+  --epochs 2 \
+  --batch_size 1 \
+  --grad_accum_steps 4 \
+  --use_weighted_loss \
+  --gradient_checkpointing \
+  --eval_accumulation_steps 8 \
+  --output_dir /kaggle/working/results/longformer_4096
+```
+
+#### **8. Country-Level Bias Analysis Rule**
+The current default project rule is:
+
+- keep co-respondent cases in raw and modeling tables
+- exclude co-respondent cases from the main country-level bias analysis
+- use duplicated country assignment only as a later robustness check
+
+This rule is reflected in:
+- `scripts/preprocess_data.py`
+- `scripts/analyze_bias.py`
+- `Model_Comparison.ipynb`

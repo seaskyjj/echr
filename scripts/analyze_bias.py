@@ -6,22 +6,55 @@ import os
 from tqdm import tqdm
 import numpy as np
 import logging
+from pathlib import Path
 
 # Suppress HF warnings
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
-def analyze_bias(data_dir, model_path):
-    print(f"Loading data from {data_dir} and model from {model_path}...")
+def resolve_split_dir(args) -> Path:
+    if args.split_dir:
+        return Path(args.split_dir)
+    return Path(args.dataset_dir) / "data" / "processed"
+
+
+def resolve_raw_dir(args) -> Path:
+    if args.raw_dir:
+        return Path(args.raw_dir)
+    return Path(args.dataset_dir) / "data" / "raw"
+
+
+def resolve_model_path(args) -> Path:
+    if args.model_path:
+        return Path(args.model_path)
+    return Path(args.working_dir) / "results" / "legal_bert" / "final_model"
+
+
+def ensure_multi_flags(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    respondent = df.get("respondent", pd.Series([""] * len(df))).fillna("").astype(str)
+    if "is_multi_respondent" not in df.columns:
+        df["is_multi_respondent"] = respondent.str.contains(";", regex=False)
+    else:
+        df["is_multi_respondent"] = df["is_multi_respondent"].fillna(False).astype(bool)
+    if "respondent_list" not in df.columns:
+        df["respondent_list"] = respondent.apply(
+            lambda s: ";".join([part.strip() for part in s.split(";") if part.strip()])
+        )
+    return df
+
+
+def analyze_bias(split_dir, raw_dir, model_path, exclude_multi_respondent=True):
+    print(f"Loading split data from {split_dir}, metadata from {raw_dir}, and model from {model_path}...")
     
     # Load Test Data
-    test_path = os.path.join(data_dir, "processed/test.csv")
+    test_path = os.path.join(split_dir, "test.csv")
     if not os.path.exists(test_path):
         print(f"Error: {test_path} not found.")
         return
     test_df = pd.read_csv(test_path)
     
     # Load Metadata for rich features
-    meta_path = os.path.join(data_dir, "raw/metadata.csv")
+    meta_path = os.path.join(raw_dir, "metadata.csv")
     if not os.path.exists(meta_path):
         print(f"Error: {meta_path} not found.")
         return
@@ -34,6 +67,7 @@ def analyze_bias(data_dir, model_path):
     
     # We only care about metadata for the test set
     merged_df = test_df.merge(meta_df, left_on='item_id', right_on='itemid', how='left')
+    merged_df = ensure_multi_flags(merged_df)
     
     print(f"Loaded {len(merged_df)} test cases. Merged with metadata.")
     
@@ -80,8 +114,12 @@ def analyze_bias(data_dir, model_path):
     print("RESPONDENT BIAS ANALYSIS")
     print("="*30)
     if 'respondent' in merged_df.columns:
-        # Split multiple respondents (e.g. "RUS;UKR")? For now take whole string
-        respondent_stats = merged_df.groupby('respondent').agg(
+        country_df = merged_df.copy()
+        if exclude_multi_respondent:
+            country_df = country_df[~country_df['is_multi_respondent']].copy()
+            print(f"Excluded multi-respondent rows from main country analysis: {len(merged_df) - len(country_df)}")
+
+        respondent_stats = country_df.groupby('respondent').agg(
             count=('item_id', 'count'),
             accuracy=('correct', 'mean'),
             pred_violation_rate=('prediction', 'mean'),
@@ -150,4 +188,24 @@ def analyze_bias(data_dir, model_path):
         print("Avg Text Length (Predicted Non-Violation): N/A (None predicted)")
 
 if __name__ == "__main__":
-    analyze_bias("data", "results/final_model")
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset_dir", type=str, default=".", help="Dataset root containing data/raw and data/processed.")
+    parser.add_argument("--working_dir", type=str, default=".", help="Writable root for outputs and trained models.")
+    parser.add_argument("--split_dir", type=str, default=None, help="Override split directory containing test.csv.")
+    parser.add_argument("--raw_dir", type=str, default=None, help="Override raw directory containing metadata.csv.")
+    parser.add_argument("--model_path", type=str, default=None, help="Override trained model path.")
+    parser.add_argument(
+        "--include_multi_respondent",
+        action="store_true",
+        help="Include co-respondent cases in country-level bias analysis. Default excludes them.",
+    )
+    args = parser.parse_args()
+
+    analyze_bias(
+        str(resolve_split_dir(args)),
+        str(resolve_raw_dir(args)),
+        str(resolve_model_path(args)),
+        exclude_multi_respondent=not args.include_multi_respondent,
+    )

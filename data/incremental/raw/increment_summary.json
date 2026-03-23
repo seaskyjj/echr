@@ -1,0 +1,113 @@
+{
+  "countries": [
+    "FRA",
+    "ROU",
+    "POL",
+    "DEU",
+    "BEL"
+  ],
+  "articles": [
+    "3",
+    "5",
+    "6",
+    "8"
+  ],
+  "existing_metadata_rows": 1073,
+  "existing_unique_itemids": 1073,
+  "per_country": {
+    "FRA": {
+      "raw_rows": 1171,
+      "eligible_rows": 823,
+      "skipped_existing": 0,
+      "selected_rows": 823,
+      "selected_label_split": {
+        "violation": 642,
+        "non-violation": 181
+      }
+    },
+    "ROU": {
+      "raw_rows": 1920,
+      "eligible_rows": 1239,
+      "skipped_existing": 0,
+      "selected_rows": 1239,
+      "selected_label_split": {
+        "violation": 1165,
+        "non-violation": 74
+      }
+    },
+    "POL": {
+      "raw_rows": 1341,
+      "eligible_rows": 1082,
+      "skipped_existing": 0,
+      "selected_rows": 1082,
+      "selected_label_split": {
+        "violation": 974,
+        "non-violation": 108
+      }
+    },
+    "DEU": {
+      "raw_rows": 379,
+      "eligible_rows": 278,
+      "skipped_existing": 0,
+      "selected_rows": 278,
+      "selected_label_split": {
+        "violation": 171,
+        "non-violation": 107
+      }
+    },
+    "BEL": {
+      "raw_rows": 322,
+      "eligible_rows": 234,
+      "skipped_existing": 0,
+      "selected_rows": 234,
+      "selected_label_split": {
+        "violation": 179,
+        "non-violation": 55
+      }
+    }
+  },
+  "batch_name": "increment_fra_rou_pol_deu_bel",
+  "increment_metadata_rows": 3653,
+  "merged_metadata_rows": 4726,
+  "existing_full_text_rows": 882,
+  "increment_full_text_rows": 2910,
+  "merged_full_text_rows": 3792,
+  "increment_country_label_table": {
+    "non-violation": {
+      "BEL": 55,
+      "BEL;FRA": 0,
+      "BEL;GRC": 0,
+      "BEL;NLD": 0,
+      "DEU": 107,
+      "DEU;GRC": 0,
+      "DEU;POL": 0,
+      "ESP;FRA": 1,
+      "FRA": 180,
+      "FRA;ITA": 0,
+      "FRA;ROU": 0,
+      "GRC;POL": 0,
+      "HUN;ROU": 0,
+      "ITA;ROU": 0,
+      "POL": 108,
+      "ROU": 74
+    },
+    "violation": {
+      "BEL": 176,
+      "BEL;FRA": 1,
+      "BEL;GRC": 1,
+      "BEL;NLD": 1,
+      "DEU": 169,
+      "DEU;GRC": 1,
+      "DEU;POL": 1,
+      "ESP;FRA": 0,
+      "FRA": 639,
+      "FRA;ITA": 1,
+      "FRA;ROU": 1,
+      "GRC;POL": 1,
+      "HUN;ROU": 1,
+      "ITA;ROU": 1,
+      "POL": 972,
+      "ROU": 1162
+    }
+  }
+}

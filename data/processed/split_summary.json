@@ -1,0 +1,97 @@
+{
+  "seed": 42,
+  "train_size": 0.7,
+  "val_size": 0.15,
+  "test_size": 0.15,
+  "source_rows": 2250,
+  "splits": [
+    {
+      "split": "train",
+      "rows": 1575,
+      "label_counts": {
+        "0": 327,
+        "1": 1248
+      },
+      "respondent_counts": {
+        "BEL": 32,
+        "BEL;GRC": 1,
+        "DEU": 130,
+        "FRA": 102,
+        "GBR": 164,
+        "GRC;POL": 1,
+        "MDA;RUS": 1,
+        "POL": 516,
+        "ROU": 299,
+        "RUS": 214,
+        "TUR": 115
+      },
+      "strata_counts": {
+        "BEL__0": 10,
+        "BEL__1": 22,
+        "DEU__0": 53,
+        "DEU__1": 77,
+        "FRA__0": 41,
+        "FRA__1": 61,
+        "GBR__0": 64,
+        "GBR__1": 100,
+        "OTHER__1": 3,
+        "POL__0": 51,
+        "POL__1": 465,
+        "ROU__0": 23,
+        "ROU__1": 276,
+        "RUS__0": 47,
+        "RUS__1": 167,
+        "TUR__0": 38,
+        "TUR__1": 77
+      },
+      "multi_respondent_rows": 3
+    },
+    {
+      "split": "val",
+      "rows": 337,
+      "label_counts": {
+        "0": 70,
+        "1": 267
+      },
+      "respondent_counts": {
+        "BEL": 6,
+        "DEU": 38,
+        "FRA": 25,
+        "GBR": 37,
+        "POL": 112,
+        "ROU": 58,
+        "RUS": 40,
+        "TUR": 21
+      },
+      "strata_counts": {
+        "0": 70,
+        "1": 267
+      },
+      "multi_respondent_rows": 0
+    },
+    {
+      "split": "test",
+      "rows": 338,
+      "label_counts": {
+        "0": 71,
+        "1": 267
+      },
+      "respondent_counts": {
+        "BEL": 9,
+        "DEU": 17,
+        "FRA": 19,
+        "GBR": 33,
+        "HUN;ROU": 1,
+        "POL": 109,
+        "ROU": 70,
+        "RUS": 51,
+        "TUR": 29
+      },
+      "strata_counts": {
+        "0": 71,
+        "1": 267
+      },
+      "multi_respondent_rows": 1
+    }
+  ]
+}

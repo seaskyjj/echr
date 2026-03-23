@@ -2,7 +2,6 @@
 import torch
 from torch.utils.data import Dataset
 import pandas as pd
-from transformers import AutoTokenizer
 
 class ECHRDataset(Dataset):
     def __init__(self, data_path, tokenizer, max_len=512):

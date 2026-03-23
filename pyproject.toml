@@ -3,11 +3,13 @@ name = "echr"
 version = "0.1.0"
 requires-python = ">=3.9"
 dependencies = [
+    "accelerate>=1.10.1",
     "bokeh>=3.4.3",
     "bs4>=0.0.2",
     "echr-extractor>=1.2.0",
     "gensim>=4.4.0",
     "ipympl>=0.10.0",
+    "joblib>=1.5.3",
     "lxml>=6.0.2",
     "matplotlib>=3.9.4",
     "nltk>=3.9.2",
@@ -20,4 +22,6 @@ dependencies = [
     "seaborn>=0.13.2",
     "shifterator>=0.3.0",
     "spacy>=3.8.11",
+    "torch>=2.8.0",
+    "transformers>=4.57.6",
 ]

@@ -53,16 +53,18 @@ def extract_facts(text: str) -> str:
     return str(text)[start_idx:best_end_idx].strip()
 
 
-def normalize_respondent(respondent: str, target_countries: List[str] = TARGET_COUNTRIES) -> str:
-    """
-    Map multi-respondent strings like 'MDA;RUS' to one target country in priority order.
-    """
-    s = str(respondent).strip()
-    if ";" in s:
-        for country in target_countries:
-            if country in s:
-                return country
-    return s
+def normalize_respondent(respondent: str) -> str:
+    """Preserve the raw HUDOC respondent string instead of collapsing co-respondent cases."""
+    return str(respondent).strip()
+
+
+def respondent_list_string(respondent: str) -> str:
+    parts = [part.strip() for part in str(respondent).split(";") if part.strip()]
+    return ";".join(parts)
+
+
+def is_multi_respondent(respondent: str) -> bool:
+    return ";" in str(respondent).strip()
 
 
 def extract_target_articles(field_val: str, target_articles: List[str] = TARGET_ARTICLES) -> List[str]:
@@ -114,11 +116,23 @@ def load_full_text_map(full_text_path: str) -> Dict[str, str]:
     return text_map
 
 
-def preprocess(data_dir: str, min_facts_chars: int = 100, keep_mixed: bool = False):
-    metadata_path = os.path.join(data_dir, "metadata.csv")
-    full_text_path = os.path.join(data_dir, "full_text.json")
+def resolve_raw_dir(args) -> str:
+    if args.raw_dir:
+        return args.raw_dir
+    return os.path.join(args.dataset_dir, "data", "raw")
+
+
+def resolve_output_dir(args) -> str:
+    if args.output_dir:
+        return args.output_dir
+    return os.path.join(args.working_dir, "data", "processed")
+
+
+def preprocess(raw_dir: str, output_dir: str, min_facts_chars: int = 100, keep_mixed: bool = False):
+    metadata_path = os.path.join(raw_dir, "metadata.csv")
+    full_text_path = os.path.join(raw_dir, "full_text.json")
     if not os.path.exists(metadata_path) or not os.path.exists(full_text_path):
-        raise FileNotFoundError(f"Missing metadata/full_text in {data_dir}")
+        raise FileNotFoundError(f"Missing metadata/full_text in {raw_dir}")
 
     df_meta = pd.read_csv(metadata_path)
     text_map = load_full_text_map(full_text_path)
@@ -182,8 +196,12 @@ def preprocess(data_dir: str, min_facts_chars: int = 100, keep_mixed: bool = Fal
                 "label": label,
                 "item_id": item_id,
                 "respondent": normalize_respondent(row.get("respondent", "UNKNOWN")),
+                "is_multi_respondent": is_multi_respondent(row.get("respondent", "")),
+                "respondent_list": respondent_list_string(row.get("respondent", "")),
                 "violation_articles": v_arts_str,
                 "nonviolation_articles": nv_arts_str,
+                "source_batch": str(row.get("source_batch", "")),
+                "source_type": str(row.get("source_type", "")),
             }
         )
         stats["kept"] += 1
@@ -203,7 +221,6 @@ def preprocess(data_dir: str, min_facts_chars: int = 100, keep_mixed: bool = Fal
     df_proc["year"] = pd.to_datetime(df_proc["judgementdate"], dayfirst=True, errors="coerce").dt.year
     df_proc = df_proc.drop(columns=["judgementdate"])
 
-    output_dir = os.path.join(os.path.dirname(data_dir), "processed")
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, "processed.csv")
     df_proc.to_csv(out_path, index=False)
@@ -227,10 +244,28 @@ if __name__ == "__main__":
         description="Preprocess ECHR data with exact article matching and strict label handling."
     )
     parser.add_argument(
-        "--data_dir",
+        "--dataset_dir",
         type=str,
-        default="data/raw",
-        help="Path containing metadata.csv and full_text.json",
+        default=".",
+        help="Dataset root containing data/raw and data/processed.",
+    )
+    parser.add_argument(
+        "--working_dir",
+        type=str,
+        default=".",
+        help="Writable root for outputs. Useful on Kaggle, e.g. /kaggle/working.",
+    )
+    parser.add_argument(
+        "--raw_dir",
+        type=str,
+        default=None,
+        help="Override raw input directory containing metadata.csv and full_text.json.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Override processed output directory.",
     )
     parser.add_argument(
         "--min_facts_chars",
@@ -246,7 +281,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     preprocess(
-        data_dir=args.data_dir,
+        raw_dir=resolve_raw_dir(args),
+        output_dir=resolve_output_dir(args),
         min_facts_chars=args.min_facts_chars,
         keep_mixed=args.keep_mixed,
     )
